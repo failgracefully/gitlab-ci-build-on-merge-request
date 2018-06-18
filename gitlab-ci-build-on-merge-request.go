@@ -18,6 +18,7 @@ type requestBody struct {
 	ObjectAttributes struct {
 		SourceBranch    string `json:"source_branch"`
 		SourceProjectId int    `json:"source_project_id"`
+		Id              int    `json:"id"`
 		State           string `json:"state"` // merged, opened or closed
 		LastCommit      struct {
 			Id string `json:"id"`
@@ -137,7 +138,7 @@ func main() {
 			requestBody.ObjectAttributes.SourceProjectId,
 			requestBody.ObjectAttributes.SourceBranch,
 			trigger.Token)
-		triggerRes, err := http.PostForm(triggerUrl, url.Values{})
+		triggerRes, err := http.PostForm(triggerUrl, url.Values{"variables[MERGEREQUEST_ID]": {fmt.Sprintf("%d",requestBody.ObjectAttributes.Id)}})
 		if err != nil {
 			log.Printf("WARN: %s", err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
