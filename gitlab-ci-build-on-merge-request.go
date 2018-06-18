@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 )
 
 type requestBody struct {
@@ -25,6 +26,7 @@ type requestBody struct {
 		} `json:"last_commit"`
 		WorkInProgress bool `json:"work_in_progress"`
 	} `json:"object_attributes"`
+	Labels []label `json:"labels"`
 }
 
 type trigger struct {
@@ -39,6 +41,11 @@ type trigger struct {
 type build struct {
 	Id     int    `json:"id"`
 	Status string `json:"status"`
+}
+
+type label struct {
+	Id    int     `json:"id"`
+	Title string  `json:"title"`
 }
 
 func printUsageAndExit(msg string) {
@@ -86,11 +93,13 @@ func main() {
 		}
 		requestBodyAsByteArray, _ := json.Marshal(requestBody)
 		log.Printf("INFO: Received %s", string(requestBodyAsByteArray))
+
 		// do not trigger build if merge request is WIP or merged/closed
 		if requestBody.ObjectKind != "merge_request" || requestBody.ObjectAttributes.State != "opened" ||
 			requestBody.ObjectAttributes.WorkInProgress {
 			return
 		}
+
 		// do not trigger if build for commit was already triggered
 		buildsUrl := fmt.Sprintf(
 			"%s/api/v4/projects/%d/repository/commits/%s/statuses?private_token=%s",
@@ -138,7 +147,15 @@ func main() {
 			requestBody.ObjectAttributes.SourceProjectId,
 			requestBody.ObjectAttributes.SourceBranch,
 			trigger.Token)
-		triggerRes, err := http.PostForm(triggerUrl, url.Values{"variables[MERGEREQUEST_ID]": {fmt.Sprintf("%d",requestBody.ObjectAttributes.Id)}})
+
+		var labels string
+		for _, label := range requestBody.Labels {
+			labels += label.Title + ", "
+		}
+		labels = strings.Trim(labels, ", ")
+
+		triggerRes, err := http.PostForm(triggerUrl, url.Values{"variables[MERGEREQUEST_ID]": {fmt.Sprintf("%d",requestBody.ObjectAttributes.Id)}, 
+		"variables[MERGEREQUEST_LABELS]": {labels}})
 		if err != nil {
 			log.Printf("WARN: %s", err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
