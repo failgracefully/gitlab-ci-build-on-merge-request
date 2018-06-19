@@ -150,9 +150,9 @@ func main() {
 
 		var labels string
 		for _, label := range requestBody.Labels {
-			labels += label.Title + ", "
+			labels += label.Title + ","
 		}
-		labels = strings.Trim(labels, ", ")
+		labels = strings.Trim(labels, ",")
 
 		triggerRes, err := http.PostForm(triggerUrl, url.Values{"variables[MERGEREQUEST_ID]": {fmt.Sprintf("%d",requestBody.ObjectAttributes.Id)}, 
 		"variables[MERGEREQUEST_LABELS]": {labels}})
