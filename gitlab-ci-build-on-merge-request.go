@@ -20,6 +20,7 @@ type requestBody struct {
 		SourceBranch    string `json:"source_branch"`
 		SourceProjectId int    `json:"source_project_id"`
 		Id              int    `json:"id"`
+		Action          string `json:"action"`
 		State           string `json:"state"` // merged, opened or closed
 		LastCommit      struct {
 			Id string `json:"id"`
@@ -44,8 +45,8 @@ type build struct {
 }
 
 type label struct {
-	Id    int     `json:"id"`
-	Title string  `json:"title"`
+	Id    int    `json:"id"`
+	Title string `json:"title"`
 }
 
 func printUsageAndExit(msg string) {
@@ -87,12 +88,12 @@ func main() {
 		}
 		var requestBody = &requestBody{}
 		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
-			log.Printf("WARN: Failed to deserialize request body (%s)", err.Error())
+			log.Printf("[BOMR] WARN: Failed to deserialize request body (%s)", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		requestBodyAsByteArray, _ := json.Marshal(requestBody)
-		log.Printf("INFO: Received %s", string(requestBodyAsByteArray))
+		log.Printf("[BOMR] [BOMR] INFO: Received %s", string(requestBodyAsByteArray))
 
 		// do not trigger build if merge request is WIP or merged/closed
 		if requestBody.ObjectKind != "merge_request" || requestBody.ObjectAttributes.State != "opened" ||
@@ -109,27 +110,27 @@ func main() {
 			*privateToken)
 		buildsRes, err := http.Get(buildsUrl)
 		if err != nil {
-			log.Printf("WARN: %s", err.Error())
+			log.Printf("[BOMR] WARN: %s", err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		defer buildsRes.Body.Close()
 		if buildsRes.StatusCode >= 400 {
-			log.Printf("WARN: GET %s resulted in %d", buildsUrl, buildsRes.StatusCode)
-			http.Error(w, fmt.Sprintf("GET %s resulted in %d", buildsUrl, buildsRes.StatusCode),
+			log.Printf("[BOMR] WARN: GET %s resulted in %d", buildsUrl, buildsRes.StatusCode)
+			http.Error(w, fmt.Sprintf("[BOMR] GET %s resulted in %d", buildsUrl, buildsRes.StatusCode),
 				http.StatusInternalServerError)
 			return
 		}
 		var builds []build
 		if err := json.NewDecoder(buildsRes.Body).Decode(&builds); err != nil {
-			log.Printf("WARN: Failed to deserialize response of GET %s (%s)", buildsUrl, err.Error())
+			log.Printf("[BOMR] WARN: Failed to deserialize response of GET %s (%s)", buildsUrl, err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		if len(builds) > 0 {
 			for _, build := range builds {
 				if build.Status != "skipped" {
-					log.Printf("INFO: %s build skipped (reason: build %d is in \"%s\" status)",
+					log.Printf("[BOMR] INFO: %s build skipped (reason: build %d is in \"%s\" status)",
 						requestBody.ObjectAttributes.LastCommit.Id, build.Id, build.Status)
 					return
 				}
@@ -137,7 +138,7 @@ func main() {
 		}
 		trigger, err := resolveTrigger(*baseURL, *privateToken, requestBody.ObjectAttributes.SourceProjectId)
 		if err != nil {
-			log.Printf("WARN: %s", err.Error())
+			log.Printf("[BOMR] WARN: %s", err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -154,30 +155,30 @@ func main() {
 		}
 		labels = strings.Trim(labels, ",")
 
-		triggerRes, err := http.PostForm(triggerUrl, url.Values{"variables[MERGEREQUEST_ID]": {fmt.Sprintf("%d",requestBody.ObjectAttributes.Id)}, 
-		"variables[MERGEREQUEST_LABELS]": {labels}})
+		triggerRes, err := http.PostForm(triggerUrl, url.Values{"variables[MERGEREQUEST_ID]": {fmt.Sprintf("[BOMR] %d", requestBody.ObjectAttributes.Id)},
+			"variables[MERGEREQUEST_LABELS]": {labels}})
 		if err != nil {
-			log.Printf("WARN: %s", err.Error())
+			log.Printf("[BOMR] WARN: %s", err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		defer triggerRes.Body.Close()
 		// todo: follow redirects
 		if triggerRes.StatusCode != 201 {
-			log.Printf("WARN: POST %s resulted in %d", triggerUrl, triggerRes.StatusCode)
-			http.Error(w, fmt.Sprintf("POST %s resulted in %d", triggerUrl, triggerRes.StatusCode),
+			log.Printf("[BOMR] WARN: POST %s resulted in %d", triggerUrl, triggerRes.StatusCode)
+			http.Error(w, fmt.Sprintf("[BOMR] POST %s resulted in %d", triggerUrl, triggerRes.StatusCode),
 				http.StatusInternalServerError)
 			return
 		}
-		log.Printf("INFO: Triggered build of %s#%s", requestBody.Project.Name,
+		log.Printf("[BOMR] INFO: Triggered build of %s#%s", requestBody.Project.Name,
 			requestBody.ObjectAttributes.SourceBranch)
 	})
-	log.Printf(fmt.Sprintf("INFO: Listening on port %d", *port))
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
+	log.Printf(fmt.Sprintf("[BOMR] INFO: Listening on port %d", *port))
+	log.Fatal(http.ListenAndServe(fmt.Sprintf("[BOMR] :%d", *port), nil))
 }
 
 func resolveTrigger(baseURL string, privateToken string, projectId int) (*trigger, error) {
-	fullURL := fmt.Sprintf("%s/api/v4/projects/%d/triggers?private_token=%s", baseURL, projectId, privateToken)
+	fullURL := fmt.Sprintf("[BOMR] %s/api/v4/projects/%d/triggers?private_token=%s", baseURL, projectId, privateToken)
 	res, err := http.Get(fullURL)
 	if err != nil {
 		return nil, err
@@ -209,7 +210,7 @@ func resolveTrigger(baseURL string, privateToken string, projectId int) (*trigge
 	}
 	trigger := triggers[0]
 	if trigger.Owner.Id == 0 { // legacy trigger (without owner)
-		takeOwnershipURL := fmt.Sprintf("%s/api/v4/projects/%d/triggers/%d/take_ownership?private_token=%s",
+		takeOwnershipURL := fmt.Sprintf("[BOMR] %s/api/v4/projects/%d/triggers/%d/take_ownership?private_token=%s",
 			baseURL, projectId, trigger.Id, privateToken)
 		res, err := http.PostForm(takeOwnershipURL, url.Values{})
 		if err != nil {
