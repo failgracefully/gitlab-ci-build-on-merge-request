@@ -93,7 +93,7 @@ func main() {
 			return
 		}
 		requestBodyAsByteArray, _ := json.Marshal(requestBody)
-		log.Printf("[BOMR] [BOMR] INFO: Received %s", string(requestBodyAsByteArray))
+		log.Printf("[BOMR] INFO: Received %s", string(requestBodyAsByteArray))
 
 		// do not trigger build if merge request is WIP or merged/closed
 		if requestBody.ObjectKind != "merge_request" || requestBody.ObjectAttributes.State != "opened" ||
@@ -155,7 +155,7 @@ func main() {
 		}
 		labels = strings.Trim(labels, ",")
 
-		triggerRes, err := http.PostForm(triggerUrl, url.Values{"variables[MERGEREQUEST_ID]": {fmt.Sprintf("[BOMR] %d", requestBody.ObjectAttributes.Id)},
+		triggerRes, err := http.PostForm(triggerUrl, url.Values{"variables[MERGEREQUEST_ID]": {fmt.Sprintf("%d", requestBody.ObjectAttributes.Id)},
 			"variables[MERGEREQUEST_LABELS]": {labels}})
 		if err != nil {
 			log.Printf("[BOMR] WARN: %s", err.Error())
@@ -174,11 +174,11 @@ func main() {
 			requestBody.ObjectAttributes.SourceBranch)
 	})
 	log.Printf(fmt.Sprintf("[BOMR] INFO: Listening on port %d", *port))
-	log.Fatal(http.ListenAndServe(fmt.Sprintf("[BOMR] :%d", *port), nil))
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 }
 
 func resolveTrigger(baseURL string, privateToken string, projectId int) (*trigger, error) {
-	fullURL := fmt.Sprintf("[BOMR] %s/api/v4/projects/%d/triggers?private_token=%s", baseURL, projectId, privateToken)
+	fullURL := fmt.Sprintf("%s/api/v4/projects/%d/triggers?private_token=%s", baseURL, projectId, privateToken)
 	res, err := http.Get(fullURL)
 	if err != nil {
 		return nil, err
@@ -210,7 +210,7 @@ func resolveTrigger(baseURL string, privateToken string, projectId int) (*trigge
 	}
 	trigger := triggers[0]
 	if trigger.Owner.Id == 0 { // legacy trigger (without owner)
-		takeOwnershipURL := fmt.Sprintf("[BOMR] %s/api/v4/projects/%d/triggers/%d/take_ownership?private_token=%s",
+		takeOwnershipURL := fmt.Sprintf("%s/api/v4/projects/%d/triggers/%d/take_ownership?private_token=%s",
 			baseURL, projectId, trigger.Id, privateToken)
 		res, err := http.PostForm(takeOwnershipURL, url.Values{})
 		if err != nil {
