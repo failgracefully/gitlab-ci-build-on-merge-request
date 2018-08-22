@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -151,7 +152,9 @@ func main() {
 
 		var labels string
 		for _, label := range requestBody.Labels {
-			labels += label.Title + ","
+			if IsValidUUID(label.Title) {
+				labels += label.Title + ","
+			}
 		}
 		labels = strings.Trim(labels, ",")
 
@@ -175,6 +178,11 @@ func main() {
 	})
 	log.Printf(fmt.Sprintf("[BOMR] INFO: Listening on port %d", *port))
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
+}
+
+func IsValidUUID(uuid string) bool {
+	r := regexp.MustCompile("^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-4[a-fA-F0-9]{3}-[8|9|aA|bB][a-fA-F0-9]{3}-[a-fA-F0-9]{12}$")
+	return r.MatchString(uuid)
 }
 
 func resolveTrigger(baseURL string, privateToken string, projectId int) (*trigger, error) {
