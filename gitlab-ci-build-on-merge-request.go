@@ -28,7 +28,13 @@ type requestBody struct {
 		} `json:"last_commit"`
 		WorkInProgress bool `json:"work_in_progress"`
 	} `json:"object_attributes"`
-	Labels []label `json:"labels"`
+	Labels  []label `json:"labels"`
+	Changes struct {
+		Labels struct {
+			Previous []label `json:"previous"`
+			Current  []label `json:"current"`
+		} `json:"labels"`
+	} `json:"changes"`
 }
 
 type trigger struct {
@@ -93,7 +99,11 @@ func main() {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+
+		fmt.Println(requestBody)
+
 		requestBodyAsByteArray, _ := json.Marshal(requestBody)
+		fmt.Printf("%s\n", requestBodyAsByteArray)
 		log.Printf("[BOMR] INFO: Received %s", string(requestBodyAsByteArray))
 
 		// do not trigger build if merge request is WIP or merged/closed
@@ -102,40 +112,45 @@ func main() {
 			return
 		}
 
-		// do not trigger if build for commit was already triggered
-		buildsUrl := fmt.Sprintf(
-			"%s/api/v4/projects/%d/repository/commits/%s/statuses?private_token=%s",
-			*baseURL,
-			requestBody.ObjectAttributes.SourceProjectId,
-			requestBody.ObjectAttributes.LastCommit.Id,
-			*privateToken)
-		buildsRes, err := http.Get(buildsUrl)
-		if err != nil {
-			log.Printf("[BOMR] WARN: %s", err.Error())
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer buildsRes.Body.Close()
-		if buildsRes.StatusCode >= 400 {
-			log.Printf("[BOMR] WARN: GET %s resulted in %d", buildsUrl, buildsRes.StatusCode)
-			http.Error(w, fmt.Sprintf("[BOMR] GET %s resulted in %d", buildsUrl, buildsRes.StatusCode),
-				http.StatusInternalServerError)
-			return
-		}
-		var builds []build
-		if err := json.NewDecoder(buildsRes.Body).Decode(&builds); err != nil {
-			log.Printf("[BOMR] WARN: Failed to deserialize response of GET %s (%s)", buildsUrl, err.Error())
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		if len(builds) > 0 {
-			for _, build := range builds {
-				if build.Status != "skipped" {
-					log.Printf("[BOMR] INFO: %s build skipped (reason: build %d is in \"%s\" status)",
-						requestBody.ObjectAttributes.LastCommit.Id, build.Id, build.Status)
-					return
+		if requestBody.Changes.Labels.Current == nil {
+
+			// do not trigger if build for commit was already triggered
+			buildsUrl := fmt.Sprintf(
+				"%s/api/v4/projects/%d/repository/commits/%s/statuses?private_token=%s",
+				*baseURL,
+				requestBody.ObjectAttributes.SourceProjectId,
+				requestBody.ObjectAttributes.LastCommit.Id,
+				*privateToken)
+			buildsRes, err := http.Get(buildsUrl)
+			if err != nil {
+				log.Printf("[BOMR] WARN: %s", err.Error())
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			defer buildsRes.Body.Close()
+			if buildsRes.StatusCode >= 400 {
+				log.Printf("[BOMR] WARN: GET %s resulted in %d", buildsUrl, buildsRes.StatusCode)
+				http.Error(w, fmt.Sprintf("[BOMR] GET %s resulted in %d", buildsUrl, buildsRes.StatusCode),
+					http.StatusInternalServerError)
+				return
+			}
+			var builds []build
+			if err := json.NewDecoder(buildsRes.Body).Decode(&builds); err != nil {
+				log.Printf("[BOMR] WARN: Failed to deserialize response of GET %s (%s)", buildsUrl, err.Error())
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if len(builds) > 0 {
+				for _, build := range builds {
+					if build.Status != "skipped" {
+						log.Printf("[BOMR] INFO: %s build skipped (reason: build %d is in \"%s\" status)",
+							requestBody.ObjectAttributes.LastCommit.Id, build.Id, build.Status)
+						return
+					}
 				}
 			}
+		} else {
+			log.Print("[BOMR] Labels changed, skip commit specific check")
 		}
 		trigger, err := resolveTrigger(*baseURL, *privateToken, requestBody.ObjectAttributes.SourceProjectId)
 		if err != nil {
